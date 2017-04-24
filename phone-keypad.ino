@@ -138,7 +138,7 @@ int row_pressed() {
   for ( int x = 0; x < ROWS; x++ ) {
     // The OR checks to see if rows after the first are triggering high.
     if ( row_values[x] > max_value or
-      ( 0 == row_with_max and deviation > MIN_DEVIATION and row_values[x] > threshold ) ) {
+      ( 0 == row_with_max and deviation > MIN_DEVIATION and row_values[x] > threshold and abs( max_value - row_values[x] ) < deviation ) ) {
       max_value = row_values[x];
       row_with_max = x;
     }
