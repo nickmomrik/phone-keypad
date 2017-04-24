@@ -6,7 +6,7 @@
 const int READ_DELAY = 2;
 
 // Microseconds to wait after a button press.
-const int PRESS_DELAY = 100;
+const int PRESS_DELAY = 200;
 
 // How many read samples to average.
 // TODO: Change the logic to do rolling sampling instead of reading them all at once.
