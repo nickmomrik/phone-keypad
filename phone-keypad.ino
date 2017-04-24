@@ -6,11 +6,11 @@
 const int READ_DELAY = 1;
 
 // Microseconds to wait after a button press.
-const int PRESS_DELAY = 200;
+const int PRESS_DELAY = 100;
 
 // How many read samples to average.
 // TODO: Change the logic to do rolling sampling instead of reading them all at once.
-const int SAMPLES = 30;
+const int SAMPLES = 50;
 
 // Deviation of the row/col values must be at least this much to trigger a button press.
 const float MIN_DEVIATION = 2;
