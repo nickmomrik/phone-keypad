@@ -10,7 +10,7 @@ const int PRESS_DELAY = 200;
 
 // How many read samples to average.
 // TODO: Change the logic to do rolling sampling instead of reading them all at once.
-const int READ_SAMPLES = 15;
+const int SAMPLES = 15;
 
 // Deviation of the row/col values must be at least this much to trigger a button press.
 const float MIN_DEVIATION = 2;
@@ -39,16 +39,25 @@ byte row_pins[ROWS] = {A3, A4, A5, A7};
 float col_values[COLS] = {};
 float row_values[ROWS] = {};
 
-// Initialize the key pressed.
-int key = BAD_KEY;
+// Rolling samples for averaging.
+float col_samples[COLS][SAMPLES];
+float row_samples[ROWS][SAMPLES];
+
+// Which sample gets updated next.
+int next_sample;
+bool samples_full;
+
+// Keeps track of which key was pressed.
+int key;
 
 QuickStats stats;
 
 void setup() {
   Serial.begin( 9600 );
 
-  clear_rows();
-  clear_cols();
+  clear_rows_cols();
+
+  key = BAD_KEY;
 }
 
 void loop() {
@@ -63,59 +72,61 @@ void loop() {
   }
 }
 
-// Empty the row values.
-void clear_rows() {
+// Empty the row and col values.
+void clear_rows_cols() {
   for ( int x = 0; x < ROWS; x++ ) {
-    row_values[x] = 0;  
-  }
-}
+    row_values[x] = 0;
 
-// Empty the col values.
-void clear_cols() {
+    for ( int y = 0; y < SAMPLES; y++ ) {
+      row_samples[x][y] = 0;
+    }
+  }
+
   for ( int x = 0; x < COLS; x++ ) {
-    col_values[x] = 0;  
+    col_values[x] = 0;
+
+    for ( int y = 0; y < SAMPLES; y++ ) {
+      col_samples[x][y] = 0;
+    }
   }
+
+  next_sample = 0;
+  samples_full = false;
 }
 
-// Read new row values.
-void read_rows() {
+// Read a new sample for each row/col.
+void read_samples() {
   int val;
 
-  clear_rows();
+  // Read one sample.
+  for ( int x = 0; x < ROWS; x++ ) {
+    val = analogRead( row_pins[x] );
+    row_samples[x][next_sample] = val;
+    delay( READ_DELAY );
+  }
+  for ( int x = 0; x < COLS; x++ ) {
+    val = analogRead( col_pins[x] );
+    col_samples[x][next_sample] = val;
+    delay( READ_DELAY );
+  }
 
-  // First create a sum of samples in each value.
-  for ( int i = 0; i < READ_SAMPLES; i++ ) {
+  next_sample++;
+
+  // All samples have been collected
+  if ( next_sample >= SAMPLES ) {
+    samples_full = true;
+
+    // Create an average from the samples and update the values.
     for ( int x = 0; x < ROWS; x++ ) {
-      val = analogRead( row_pins[x] );
-      row_values[x] += val;
-      delay( READ_DELAY );
+      row_values[x] = stats.average( row_samples[x], SAMPLES );
     }
-  }
 
-  // Then convert the sum into an average.
-  for ( int x = 0; x < ROWS; x++ ) {
-    row_values[x] = row_values[x] / READ_SAMPLES;
-  }
-}
-
-// Read new col values.
-void read_cols() {
-  int val;
-
-  clear_cols();
-
-  // First create a sum of samples in each value.
-  for ( int i = 0; i < READ_SAMPLES; i++ ) {
     for ( int x = 0; x < COLS; x++ ) {
-      val = analogRead( col_pins[x] );
-      col_values[x] += val;
-      delay( READ_DELAY );
+      col_values[x] = stats.average( col_samples[x], SAMPLES );
     }
-  }
 
-  // Then convert the sum into an average.
-  for ( int x = 0; x < COLS; x++ ) {
-    col_values[x] = col_values[x] / READ_SAMPLES;
+    // Rolling samples, so start updating from the beginning of the arrays.
+    next_sample = 0;
   }
 }
 
@@ -179,8 +190,12 @@ int col_pressed() {
 }
 
 char get_key_press() {
-  read_rows();
-  read_cols();
+  read_samples();
+
+  // Don't check for key presses until there are enough samples.
+  if ( ! samples_full ) {
+    return BAD_KEY;
+  }
 
   int key_row = row_pressed();
   int key_col = col_pressed();
@@ -189,6 +204,9 @@ char get_key_press() {
   if ( key_row > -1 and key_col > -1 ) {
     print_rows();
     print_cols();
+
+    // Reset the values and samples.
+    clear_rows_cols();
 
     return keys[key_row][key_col];
   } else {
