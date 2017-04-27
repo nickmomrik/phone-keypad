@@ -67,15 +67,15 @@ void setup() {
 
   released = true;
 
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.begin( SSD1306_SWITCHCAPVCC, 0x3C );
 
   display.display();
   delay( 1000 );
   display.clearDisplay();
   display.display();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0,0);
+  display.setTextSize( 1 );
+  display.setTextColor( WHITE );
+  display.setCursor( 0, 0 );
 }
 
 void loop() {
