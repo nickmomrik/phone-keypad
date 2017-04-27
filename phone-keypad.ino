@@ -1,25 +1,14 @@
-// Make sure to install QuickStats
-// http://playground.arduino.cc/Main/QuickStats
-#include <QuickStats.h>
-
 // Microseconds between each analogRead of the col/row pins.
 const int READ_DELAY = 1;
 
 // Microseconds to wait after a button press.
-const int PRESS_DELAY = 100;
-
-// How many read samples to average.
-// TODO: Change the logic to do rolling sampling instead of reading them all at once.
-const int SAMPLES = 50;
-
-// Deviation of the row/col values must be at least this much to trigger a button press.
-const float MIN_DEVIATION = 2;
+const int PRESS_DELAY = 150;
 
 // Just a blank character.
 const char BAD_KEY = ' ';
 
 // Display debugging info in the Serial Monitor
-const bool DEBUG = true;
+const bool DEBUG = false;
 
 // Setup the keypad matrix.
 const byte ROWS = 4;
@@ -31,41 +20,59 @@ char keys[ROWS][COLS] = {
   {'*', '0', '#'}
 };
 
-// Analog pins used the microcontroller.
-byte col_pins[COLS] = {A0, A1, A2};
-byte row_pins[ROWS] = {A3, A4, A5, A7};
+int tones[ROWS][COLS]= {
+  {3000, 3200, 3400},
+  {3600, 3800, 4000},
+  {4200, 4400, 4600},
+  {4800, 5000, 5200}
+};
+int tone_duration = 120;
+
+// Input pins used the microcontroller.
+byte row_pins[ROWS] = {13, 12, 11, 10}; // Right top, left top, right bottom, left bottom
+byte col_pins[COLS] = {6, 5, 3}; // Top left, top right, bottom
+byte backlight_pin = 2;
+byte piezo_pin = 9;
 
 // Where read values will be stored.
-float col_values[COLS] = {};
-float row_values[ROWS] = {};
-
-// Rolling samples for averaging.
-float col_samples[COLS][SAMPLES];
-float row_samples[ROWS][SAMPLES];
-
-// Which sample gets updated next.
-int next_sample;
-bool samples_full;
+int row_values[ROWS] = {};
+int col_values[COLS] = {};
 
 // Keeps track of which key was pressed.
 int key;
-
-QuickStats stats;
+int key_row;
+int key_col;
+bool released;
 
 void setup() {
   Serial.begin( 9600 );
+  while ( ! Serial ) {;}
+
+  pinMode( backlight_pin, OUTPUT );
+  digitalWrite( backlight_pin, HIGH );
+
+  for ( int x = 0; x < ROWS; x++ ) {
+    pinMode( row_pins[x], INPUT );
+  }
+
+  for ( int x = 0; x < COLS; x++ ) {
+    pinMode( col_pins[x], INPUT );
+  }
 
   clear_rows_cols();
 
   key = BAD_KEY;
+
+  released = true;
 }
 
 void loop() {
   key = get_key_press();
   if ( key != BAD_KEY ) {
-    Serial.print( "KEY: " );
+    tone( piezo_pin, tones[key_row][key_col], tone_duration );
+
     Serial.write( key );
-    Serial.println( "" );
+    Serial.println();
 
     // Wait so keys don't repeot too often.
     delay( PRESS_DELAY );
@@ -75,146 +82,100 @@ void loop() {
 // Empty the row and col values.
 void clear_rows_cols() {
   for ( int x = 0; x < ROWS; x++ ) {
-    row_values[x] = 0;
-
-    for ( int y = 0; y < SAMPLES; y++ ) {
-      row_samples[x][y] = 0;
-    }
+    row_values[x] = LOW;
   }
 
   for ( int x = 0; x < COLS; x++ ) {
-    col_values[x] = 0;
-
-    for ( int y = 0; y < SAMPLES; y++ ) {
-      col_samples[x][y] = 0;
-    }
+    col_values[x] = LOW;
   }
-
-  next_sample = 0;
-  samples_full = false;
 }
 
 // Read a new sample for each row/col.
-void read_samples() {
+void read_values() {
   int val;
+
+  clear_rows_cols();
 
   // Read one sample.
   for ( int x = 0; x < ROWS; x++ ) {
-    val = analogRead( row_pins[x] );
-    row_samples[x][next_sample] = val;
+    val = digitalRead( row_pins[x] );
+    row_values[x] = val;
     delay( READ_DELAY );
   }
+
   for ( int x = 0; x < COLS; x++ ) {
-    val = analogRead( col_pins[x] );
-    col_samples[x][next_sample] = val;
+    val = digitalRead( col_pins[x] );
+    col_values[x] = val;
     delay( READ_DELAY );
-  }
-
-  next_sample++;
-
-  // All samples have been collected
-  if ( next_sample >= SAMPLES ) {
-    samples_full = true;
-
-    // Create an average from the samples and update the values.
-    for ( int x = 0; x < ROWS; x++ ) {
-      row_values[x] = stats.average( row_samples[x], SAMPLES );
-    }
-
-    for ( int x = 0; x < COLS; x++ ) {
-      col_values[x] = stats.average( col_samples[x], SAMPLES );
-    }
-
-    // Rolling samples, so start updating from the beginning of the arrays.
-    next_sample = 0;
   }
 }
 
 int row_pressed() {
-  // The first row always stays higher, even when another row is being triggered.
-  // So the logic is more complex than detecting the pressed column.
-  
-  int max_value = 0;
-  int row_with_max = -1;
-  int sub_size = ROWS - 1;
-  float sub_rows[sub_size] = {};
-  
-  // Setup an array of values without the first row.
-  for ( int i = 0; i < sub_size; i++ ) {
-    sub_rows[i] = row_values[i + 1];
-  }
-  float deviation = stats.stdev( sub_rows, sub_size );
-  float threshold = stats.average( sub_rows, sub_size ) + deviation;
+  int row = -1;
+  bool multiple = false;
 
   for ( int x = 0; x < ROWS; x++ ) {
-    // The OR checks to see if rows after the first are triggering high.
-    if ( row_values[x] > max_value or
-      ( 0 == row_with_max and deviation > MIN_DEVIATION and row_values[x] > threshold and abs( max_value - row_values[x] ) < deviation ) ) {
-      max_value = row_values[x];
-      row_with_max = x;
+    if ( row_values[x] == HIGH ) {
+      if ( row > -1 ) {
+        multiple = true;
+      }
+
+      row = x;
     }
   }
 
-  // When the first row is still the highest, use appropriate statistics.
-  if ( row_with_max == 0 ) {
-    deviation = stats.stdev( row_values, ROWS );
-    threshold = stats.average( row_values, ROWS );
+  if ( multiple ) {
+    row = -1;
   }
 
-  if ( deviation > MIN_DEVIATION and max_value > threshold ) {
-    return row_with_max;
-  } else {
-    return -1;
-  }
+  return row;
 }
 
 int col_pressed() {
-  int max_value = 0;
-  int col_with_max = -1;
-  float deviation;
+  int col = -1;
+  bool multiple = false;
 
-  // Find the col with the highest value.
   for ( int x = 0; x < COLS; x++ ) {
-    if ( col_values[x] > max_value ) {
-      max_value = col_values[x];
-      col_with_max = x;
+    if ( col_values[x] == HIGH ) {
+      if ( col > -1 ) {
+        multiple = true;
+      }
+
+      col = x;
     }
   }
 
-  deviation = stats.stdev( col_values, COLS );
-  if ( deviation > MIN_DEVIATION and max_value > ( stats.average( col_values, COLS ) + deviation ) ) {
-    return col_with_max;
-  } else {
-    return -1;
+  if ( multiple ) {
+    col = -1;
   }
+
+  return col;
 }
 
 char get_key_press() {
-  read_samples();
+  read_values();
 
-  // Don't check for key presses until there are enough samples.
-  if ( ! samples_full ) {
-    return BAD_KEY;
-  }
-
-  int key_row = row_pressed();
-  int key_col = col_pressed();
+  key_row = row_pressed();
+  key_col = col_pressed();
 
   // Make sure a row and col is detected for a valid key press.
   if ( key_row > -1 and key_col > -1 ) {
-    print_rows();
-    print_cols();
+    print_values();
 
-    // Reset the values and samples.
-    clear_rows_cols();
+    if ( released ) {
+      released = false;
 
-    return keys[key_row][key_col];
+      return keys[key_row][key_col];
+    } else {
+      return BAD_KEY;
+    }
   } else {
+    released = true;
     return BAD_KEY;
   }
 }
 
-void print_rows() {
+void print_values() {
   if ( ! DEBUG ) {
     return;
   }
@@ -224,19 +185,12 @@ void print_rows() {
     Serial.print( row_values[x] );
     Serial.print( " " );
   }
-  Serial.println( "" );
-}
 
-void print_cols() {
-  if ( ! DEBUG ) {
-    return;
-  }
-
-  Serial.print( "COLS: " );
+  Serial.print( " COLS: " );
   for ( int x = 0; x < COLS; x++ ) {
     Serial.print( col_values[x] );
     Serial.print( " " );
   }
-  Serial.println( "" );
+  Serial.println();
 }
 
