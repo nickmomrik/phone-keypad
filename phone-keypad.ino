@@ -40,8 +40,8 @@ byte backlight_pin = 0;
 byte piezo_pin = 9;
 
 // Where read values will be stored.
-int row_values[ROWS] = {};
-int col_values[COLS] = {};
+bool row_values[ROWS] = {};
+bool col_values[COLS] = {};
 
 // Keeps track of which key was pressed.
 char key;
