@@ -1,3 +1,8 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+ 
+Adafruit_SSD1306 display = Adafruit_SSD1306();
+
 // Microseconds between each analogRead of the col/row pins.
 const int READ_DELAY = 1;
 
@@ -30,8 +35,8 @@ int tone_duration = 120;
 
 // Input pins used the microcontroller.
 byte row_pins[ROWS] = {13, 12, 11, 10}; // Right top, left top, right bottom, left bottom
-byte col_pins[COLS] = {6, 5, 3}; // Top left, top right, bottom
-byte backlight_pin = 2;
+byte col_pins[COLS] = {6, 5, 1}; // Top left, top right, bottom
+byte backlight_pin = 0;
 byte piezo_pin = 9;
 
 // Where read values will be stored.
@@ -39,15 +44,12 @@ int row_values[ROWS] = {};
 int col_values[COLS] = {};
 
 // Keeps track of which key was pressed.
-int key;
+char key;
 int key_row;
 int key_col;
 bool released;
 
 void setup() {
-  Serial.begin( 9600 );
-  while ( ! Serial ) {;}
-
   pinMode( backlight_pin, OUTPUT );
   digitalWrite( backlight_pin, HIGH );
 
@@ -64,6 +66,16 @@ void setup() {
   key = BAD_KEY;
 
   released = true;
+
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+
+  display.display();
+  delay( 1000 );
+  display.clearDisplay();
+  display.display();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
 }
 
 void loop() {
@@ -71,8 +83,8 @@ void loop() {
   if ( key != BAD_KEY ) {
     tone( piezo_pin, tones[key_row][key_col], tone_duration );
 
-    Serial.write( key );
-    Serial.println();
+    display.print( key );
+    display.display();
 
     // Wait so keys don't repeot too often.
     delay( PRESS_DELAY );
