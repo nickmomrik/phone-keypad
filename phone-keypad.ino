@@ -50,6 +50,10 @@ int key_col;
 bool released;
 
 void setup() {
+  if ( DEBUG ) {
+    Serial.begin( 9600 );
+  }
+
   pinMode( backlight_pin, OUTPUT );
   digitalWrite( backlight_pin, HIGH );
 
