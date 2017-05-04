@@ -1,5 +1,5 @@
 # phone-keypad
-Reading from a keyboard taken out of an old phone, dated 1980!
+Using a keypad taken out of an old phone, dated 1980!
 
 ![Keypad](./keypad.jpg?raw=true "Keypad")
 
